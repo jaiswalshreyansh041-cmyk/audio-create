@@ -1,0 +1,5 @@
+{
+  "name": "Audio QC Dashboard",
+  "description": "Automated quality-control dashboard for audio files with AI semantic checks.",
+  "requestFramePermissions": []
+}
