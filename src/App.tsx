@@ -212,7 +212,9 @@ export default function App() {
       const config = await configRes.json();
       
       const apiKey = config.GEMINI_API_KEY;
-      if (!apiKey) {
+      const transcriptApiKey = config.TRANSCRIPT_API_KEY || apiKey; // Fallback to primary if not set
+      const jsonApiKey = config.JSON_API_KEY || apiKey; // Fallback to primary if not set
+      if (!apiKey && !jsonApiKey) {
         throw new Error("API key is missing from environment variables.");
       }
 
@@ -236,22 +238,41 @@ export default function App() {
         throw new Error("Max retries reached");
       };
 
-      // 1. Upload file using Gemini SDK
-      const ai = new GoogleGenAI({ apiKey });
-      const uploadResult = await withRetry(() => ai.files.upload({
+      // 1. Upload file using Gemini SDK using the Analysis key
+      const aiAnalysis = new GoogleGenAI({ apiKey: jsonApiKey });
+      const uploadResultAnalysis = await withRetry(() => aiAnalysis.files.upload({
         file: file,
         config: {
           mimeType: file.type || 'audio/mp3',
-          displayName: file.name
+          displayName: `analysis-${file.name}`
         }
       }));
-      
-      const fileUri = uploadResult.uri;
+      const fileUriAnalysis = uploadResultAnalysis.uri;
+
+      // 1b. Upload file using Gemini SDK using the Transcript key
+      const aiTranscript = new GoogleGenAI({ apiKey: transcriptApiKey });
+      const uploadResultTranscript = await withRetry(() => aiTranscript.files.upload({
+        file: file,
+        config: {
+          mimeType: file.type || 'audio/mp3',
+          displayName: `transcript-${file.name}`
+        }
+      }));
+      const fileUriTranscript = uploadResultTranscript.uri;
 
       // 2. Generate JSON Analysis directly
       setIsGeneratingJson(true);
       try {
-        const jsonPrompt = `Analyze the audio and provide a JSON response with the following structure. ALL SCORES MUST BE NUMBERS (e.g. 0.5), NOT STRINGS:
+        const analysisPromise = withRetry(() => aiAnalysis.models.generateContent({
+          model: 'gemini-3.1-pro-preview', // Or whatever model you want here
+          contents: [
+            {
+              fileData: {
+                fileUri: fileUriAnalysis,
+                mimeType: file.type || 'audio/mp3'
+              }
+            },
+            `Analyze the audio and provide a JSON response with ONLY the following structure. Do NOT include transcripts. ALL SCORES MUST BE NUMBERS (e.g. 0.5), NOT STRINGS:
 {
   "content_safety_scores": {
     "toxicity_detected": "Number 0.0 to 1.0 (Reject >= 0.3)",
@@ -274,8 +295,24 @@ export default function App() {
     "unnatural_pauses": "Number 0.0 to 1.0 (Reject >= 0.5)",
     "robotic_tone": "Number 0.0 to 1.0 (Reject >= 0.5)",
     "audio_glitches": "Number 0.0 to 1.0 (Reject >= 0.5)"
-  },
-  "speakers": ["List of IDs"],
+  }
+}`
+          ],
+          config: { responseMimeType: "application/json" }
+        }));
+
+        const transcriptPromise = withRetry(() => aiTranscript.models.generateContent({
+          model: 'gemini-3.1-pro-preview', // Or gemini-2.5-flash if preferred
+          contents: [
+            {
+              fileData: {
+                fileUri: fileUriTranscript,
+                mimeType: file.type || 'audio/mp3'
+              }
+            },
+            `Generate a transcript of this audio in JSON format exactly like this:
+{
+  "speakers": ["Speaker 1", "Speaker 2"],
   "transcript_by_turn": [
     {
       "speaker": "Speaker 1",
@@ -291,31 +328,27 @@ export default function App() {
 - Fillers: Keep natural fillers exactly as spoken (um, uh, ah, like, you know).
 - Cut-off Sentences: If a speaker is interrupted, end with a dash —.
 - Accuracy: Write exactly what you hear. No paraphrasing or commentary.
-- Speaker Labels: Always use Speaker 1, Speaker 2, etc. Each speaker always starts on a new line.`;
-
-        const jsonResponse = await withRetry(() => ai.models.generateContent({
-          model: 'gemini-3.1-pro-preview',
-          contents: [
-            {
-              fileData: {
-                fileUri: fileUri,
-                mimeType: file.type || 'audio/mp3'
-              }
-            },
-            jsonPrompt
+- Speaker Labels: Always use Speaker 1, Speaker 2, etc. Each speaker always starts on a new line.`
           ],
-          config: {
-            responseMimeType: "application/json"
-          }
+          config: { responseMimeType: "application/json" }
         }));
 
-        let aiData;
+        const [analysisRes, transcriptRes] = await Promise.all([analysisPromise, transcriptPromise]);
+
+        let aiDataObj = {};
+        let transcriptDataObj = {};
+
         try {
-          const cleanJsonText = (jsonResponse.text || "{}").replace(/```json/gi, '').replace(/```/g, '').trim();
-          aiData = JSON.parse(cleanJsonText);
-        } catch (e) {
-          aiData = { error: "Failed to parse AI JSON", raw: jsonResponse.text };
-        }
+          const cleanAnalysis = (analysisRes.text || "{}").replace(/```json/gi, '').replace(/```/g, '').trim();
+          aiDataObj = JSON.parse(cleanAnalysis);
+        } catch (e) {}
+
+        try {
+          const cleanTranscript = (transcriptRes.text || "{}").replace(/```json/gi, '').replace(/```/g, '').trim();
+          transcriptDataObj = JSON.parse(cleanTranscript);
+        } catch (e) {}
+
+        const aiData = { ...aiDataObj, ...transcriptDataObj };
 
         const programmaticData = {
           duration_seconds: Number(stats?.duration.toFixed(2) || 0),
@@ -343,7 +376,16 @@ export default function App() {
 
     } catch (err: any) {
       console.error(err);
-      setAiError(err.message || "Failed to run AI analysis. Please check your API key and try again.");
+      let errorMessage = err.message || "Failed to run AI analysis. Please check your API key and try again.";
+      try {
+        const errorJson = JSON.parse(errorMessage);
+        if (errorJson.error && errorJson.error.message) {
+          errorMessage = errorJson.error.message;
+        }
+      } catch(e) {
+        // If it's not valid JSON, just keep the original error message
+      }
+      setAiError(errorMessage);
     } finally {
       setIsAiAnalyzing(false);
     }

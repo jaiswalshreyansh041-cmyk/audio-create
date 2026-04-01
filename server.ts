@@ -12,7 +12,11 @@ async function startServer() {
 
   // API route to provide the runtime Gemini API key to the frontend
   app.get("/api/config", (req, res) => {
-    res.json({ GEMINI_API_KEY: process.env.GEMINI_API_KEY || process.env.API_KEY });
+    res.json({ 
+      GEMINI_API_KEY: process.env.GEMINI_API_KEY || process.env.API_KEY,
+      TRANSCRIPT_API_KEY: process.env.TRANSCRIPT_API_KEY,
+      JSON_API_KEY: process.env.JSON_API_KEY
+    });
   });
 
   // Vite middleware for development
