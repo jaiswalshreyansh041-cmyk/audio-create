@@ -264,7 +264,7 @@ export default function App() {
       setIsGeneratingJson(true);
       try {
         const analysisPromise = withRetry(() => aiAnalysis.models.generateContent({
-          model: 'gemini-3.1-pro-preview', // Or whatever model you want here
+          model: 'gemini-3-flash-preview',
           contents: [
             {
               fileData: {
@@ -302,7 +302,7 @@ export default function App() {
         }));
 
         const transcriptPromise = withRetry(() => aiTranscript.models.generateContent({
-          model: 'gemini-3.1-pro-preview', // Or gemini-2.5-flash if preferred
+          model: 'gemini-3-flash-preview',
           contents: [
             {
               fileData: {
@@ -333,20 +333,32 @@ export default function App() {
           config: { responseMimeType: "application/json" }
         }));
 
-        const [analysisRes, transcriptRes] = await Promise.all([analysisPromise, transcriptPromise]);
+        const [analysisSettled, transcriptSettled] = await Promise.allSettled([analysisPromise, transcriptPromise]);
 
         let aiDataObj = {};
         let transcriptDataObj = {};
 
-        try {
-          const cleanAnalysis = (analysisRes.text || "{}").replace(/```json/gi, '').replace(/```/g, '').trim();
-          aiDataObj = JSON.parse(cleanAnalysis);
-        } catch (e) {}
+        if (analysisSettled.status === 'fulfilled') {
+          try {
+            const cleanAnalysis = (analysisSettled.value.text || "{}").replace(/```json/gi, '').replace(/```/g, '').trim();
+            aiDataObj = JSON.parse(cleanAnalysis);
+          } catch (e) {
+            console.error("Analysis JSON parse error:", e, analysisSettled.value.text);
+          }
+        } else {
+          console.error("Analysis API call failed:", analysisSettled.reason);
+        }
 
-        try {
-          const cleanTranscript = (transcriptRes.text || "{}").replace(/```json/gi, '').replace(/```/g, '').trim();
-          transcriptDataObj = JSON.parse(cleanTranscript);
-        } catch (e) {}
+        if (transcriptSettled.status === 'fulfilled') {
+          try {
+            const cleanTranscript = (transcriptSettled.value.text || "{}").replace(/```json/gi, '').replace(/```/g, '').trim();
+            transcriptDataObj = JSON.parse(cleanTranscript);
+          } catch (e) {
+            console.error("Transcript JSON parse error:", e, transcriptSettled.value.text);
+          }
+        } else {
+          console.error("Transcript API call failed:", transcriptSettled.reason);
+        }
 
         const aiData = { ...aiDataObj, ...transcriptDataObj };
 
