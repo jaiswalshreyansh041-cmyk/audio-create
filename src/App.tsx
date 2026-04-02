@@ -318,14 +318,16 @@ export default function App() {
       "speaker": "Speaker 1",
       "start_time": "[MM:SS]",
       "end_time": "[MM:SS]",
-      "text": "Exact verbatim text"
+      "text": "Exact verbatim text written in the NATIVE SCRIPT of the spoken language (e.g. Telugu: తెలుగు లిపి, Hindi: देवनागरी, Tamil: தமிழ் எழுத்து). Do NOT romanize or transliterate — always use the native Unicode script."
     }
   ]
 }
 **TRANSCRIPTION RULES:**
+- Native Script: ALWAYS write the spoken words in their native Unicode script. Telugu → తెలుగు లిపి, Hindi → देवनागरी, Tamil → தமிழ், Kannada → ಕನ್ನಡ, etc. NEVER use Roman/Latin transliteration.
+- English words spoken within a native-language sentence: keep them in English as spoken.
 - Beeps / Sensitive Info: If a beep replaces PII (name, DOB, phone), write [beep]. Never guess the hidden info.
 - Overlapping / Interruptions: If two speakers talk at the same time, write each speaker on a separate line with their respective timestamps. Do NOT add notes like (overlapping) or (interruption).
-- Fillers: Keep natural fillers exactly as spoken (um, uh, ah, like, you know).
+- Fillers: Keep natural fillers exactly as spoken, written in native script.
 - Cut-off Sentences: If a speaker is interrupted, end with a dash —.
 - Accuracy: Write exactly what you hear. No paraphrasing or commentary.
 - Speaker Labels: Always use Speaker 1, Speaker 2, etc. Each speaker always starts on a new line.`
