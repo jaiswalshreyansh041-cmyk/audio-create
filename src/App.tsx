@@ -264,7 +264,7 @@ export default function App() {
       setIsGeneratingJson(true);
       try {
         const analysisPromise = withRetry(() => aiAnalysis.models.generateContent({
-          model: 'gemini-3-flash-preview',
+          model: 'gemini-3.1-pro-preview',
           contents: [
             {
               fileData: {
@@ -302,7 +302,7 @@ export default function App() {
         }));
 
         const transcriptPromise = withRetry(() => aiTranscript.models.generateContent({
-          model: 'gemini-3-flash-preview',
+          model: 'gemini-3.1-pro-preview',
           contents: [
             {
               fileData: {
