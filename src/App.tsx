@@ -438,25 +438,34 @@ IMPORTANT: All timestamps must be absolute (offset from start of full recording,
 
             const annotationRes = await withRetry(() => aiAnalysis.models.generateContent({
               model: 'gemini-3.1-pro-preview',
-              contents: [`You are a conversation analyst. Annotate every turn in the transcript below. Return ONLY a valid JSON array — no markdown, no commentary.
+              contents: [`You are a conversation analyst. Analyze the transcript below and return ONLY a valid JSON object — no markdown, no commentary — with this exact structure:
 
-Each element must follow this exact structure:
 {
-  "turn_id": <integer starting at 1>,
-  "speaker": "<speaker label>",
-  "timestamp_start": "<start time>",
-  "timestamp_end": "<end time>",
-  "duration_seconds": <end minus start in seconds, 2 decimal places>,
-  "gap_from_previous_seconds": <gap since previous turn ended, 0.0 for first turn>,
-  "text": "<original text verbatim>",
-  "annotations": {
-    "emotion": "<neutral|frustrated|anxious|confident|skeptical|amused|excited|confused|resigned|sarcastic>",
-    "disfluency": ["<none|filler|false_start|self_repair|repetition|long_pause>"],
-    "speaking_rate": "<slow|normal|fast>",
-    "turn_taking": "<normal_transition|latch|overlap|interruption|long_gap>",
-    "emphasis": ["<stressed words>"],
-    "intent": "<statement|question|proposal|agreement|disagreement|correction|request|elaboration|backchannel>"
-  }
+  "conversation_analysis": {
+    "emotional_arc": "<Stable / consistent tone throughout|Escalation (calm → tense)|De-escalation (tense → calm)|Escalation → resolution|Fluctuating / no clear pattern>",
+    "dominant_dynamic": "<Collaborative|Negotiation|Conflict|Information exchange|Instructional (one speaker leading)|Social / casual>",
+    "turn_taking_pattern": "<Balanced|Speaker A dominant|Speaker B dominant|Frequent overlaps / interruptions|Long monologues with minimal back-and-forth>",
+    "background_noise_level": "<Clean / silent|Low (AC hum, distant sounds)|Moderate (office, street, keyboard)|High (crowd, traffic, music)>"
+  },
+  "turns": [
+    {
+      "turn_id": <integer starting at 1>,
+      "speaker": "<speaker label>",
+      "timestamp_start": "<start time>",
+      "timestamp_end": "<end time>",
+      "duration_seconds": <end minus start in seconds, 2 decimal places>,
+      "gap_from_previous_seconds": <gap since previous turn ended, 0.0 for first turn>,
+      "text": "<original text verbatim>",
+      "annotations": {
+        "emotion": "<neutral|frustrated|anxious|confident|skeptical|amused|excited|confused|resigned|sarcastic>",
+        "disfluency": ["<none|filler|false_start|self_repair|repetition|long_pause>"],
+        "speaking_rate": "<slow|normal|fast>",
+        "turn_taking": "<normal_transition|latch|overlap|interruption|long_gap>",
+        "emphasis": ["<stressed words>"],
+        "intent": "<statement|question|proposal|agreement|disagreement|correction|request|elaboration|backchannel>"
+      }
+    }
+  ]
 }
 
 RULES:
@@ -466,25 +475,31 @@ RULES:
 - emphasis: list only actually stressed words; [] if none
 - First turn: turn_taking = "normal_transition", gap_from_previous_seconds = 0.0
 - intent: statement = sharing info; question = asking for info; proposal = suggesting idea; agreement = expressing agreement; disagreement = pushing back; correction = fixing an error; request = asking for action; elaboration = adding detail to prior turn; backchannel = acknowledgment only (mm-hmm, right, okay)
+- background_noise_level: infer from audio quality cues in the transcript (e.g. [noise], [beep], interruptions) and spoken context
 
 TRANSCRIPT:
 ${transcriptText}`],
             }));
 
-            const rawAnnotation = annotationRes.text || "[]";
+            const rawAnnotation = annotationRes.text || "{}";
             const cleanAnnotation = rawAnnotation.replace(/```json/gi, '').replace(/```/g, '').trim();
-            const annotationData: any[] = JSON.parse(cleanAnnotation);
-            console.log("Annotation data received:", annotationData.length, "turns");
+            const annotationData: { conversation_analysis?: any; turns?: any[] } = JSON.parse(cleanAnnotation);
+            const annotationTurns: any[] = annotationData.turns || [];
+            console.log("Annotation data received:", annotationTurns.length, "turns");
             annotatedTurns = allTurns.map((turn, idx) => {
-              const annotated = annotationData[idx] || annotationData.find((a: any) => a.turn_id === idx + 1);
+              const annotated = annotationTurns[idx] || annotationTurns.find((a: any) => a.turn_id === idx + 1);
               return annotated ? { turn_id: idx + 1, ...turn, annotations: annotated.annotations } : { turn_id: idx + 1, ...turn };
             });
+            if (annotationData.conversation_analysis) {
+              (transcriptDataObj as any).conversation_analysis = annotationData.conversation_analysis;
+            }
           } catch (e) {
             console.error("Annotation step failed:", e);
           }
         }
 
         transcriptDataObj = {
+          ...transcriptDataObj,
           detected_language: detectedLanguage,
           speakers: Array.from(speakerSet),
           transcript_by_turn: annotatedTurns
