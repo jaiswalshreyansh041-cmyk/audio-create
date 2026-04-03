@@ -42,6 +42,7 @@ export default function App() {
   const maxDuration = 300;
 
   const audioRef = useRef<HTMLAudioElement>(null);
+  const audioBufferRef = useRef<AudioBuffer | null>(null);
 
   let parsedAiData: any = null;
   if (aiJsonResult) {
@@ -60,6 +61,7 @@ export default function App() {
     setStats(null);
     setError(null);
     setAiResult(null);
+    setAiJsonResult(null);
     setAiError(null);
     setIsAnalyzing(true);
 
@@ -67,6 +69,7 @@ export default function App() {
       const arrayBuffer = await selectedFile.arrayBuffer();
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
       const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+      audioBufferRef.current = audioBuffer;
 
       const numChannels = audioBuffer.numberOfChannels;
       const sampleRate = audioBuffer.sampleRate;
@@ -91,6 +94,7 @@ export default function App() {
 
       let currentSilenceSamples = 0;
       let maxSilenceSamples = 0;
+      let consecutiveClipSamples = 0; // true clipping = flat top across 3+ consecutive samples
 
       const frameSize = Math.floor(sampleRate * 0.05); // 50ms frames
       const rmsValues: number[] = [];
@@ -108,8 +112,14 @@ export default function App() {
         sumSquares += sample * sample;
         dcOffsetSum += sample;
 
-        // 1. Clipping detection (audio exceeds or hits 0 dBFS -> 1.0)
-        if (absSample >= 0.999) clipCount++;
+        // 1. Clipping detection — require 3 consecutive samples at >= 0.999
+        // Single samples at 0.999 are codec artifacts, not real clipping
+        if (absSample >= 0.999) {
+          consecutiveClipSamples++;
+          if (consecutiveClipSamples === 3) clipCount++; // count each clipping event once
+        } else {
+          consecutiveClipSamples = 0;
+        }
 
         if (absSample < silenceThreshold) {
           silenceSamples++;
@@ -192,6 +202,40 @@ export default function App() {
     }
   };
 
+  const audioBufferToWav = (buffer: AudioBuffer, startSample: number, endSample: number): File => {
+    const sampleRate = buffer.sampleRate;
+    const length = endSample - startSample;
+    const wavBuffer = new ArrayBuffer(44 + length * 2);
+    const view = new DataView(wavBuffer);
+    const writeStr = (offset: number, str: string) => {
+      for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+    };
+    writeStr(0, 'RIFF');
+    view.setUint32(4, 36 + length * 2, true);
+    writeStr(8, 'WAVE');
+    writeStr(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true); // mono
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeStr(36, 'data');
+    view.setUint32(40, length * 2, true);
+    // mix down to mono
+    const numChannels = buffer.numberOfChannels;
+    let offset = 44;
+    for (let i = startSample; i < endSample; i++) {
+      let sum = 0;
+      for (let c = 0; c < numChannels; c++) sum += buffer.getChannelData(c)[i];
+      const s = Math.max(-1, Math.min(1, sum / numChannels));
+      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+      offset += 2;
+    }
+    return new File([wavBuffer], 'chunk.wav', { type: 'audio/wav' });
+  };
+
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
@@ -238,31 +282,46 @@ export default function App() {
         throw new Error("Max retries reached");
       };
 
-      // 1. Upload file using Gemini SDK using the Analysis key
       const aiAnalysis = new GoogleGenAI({ apiKey: jsonApiKey });
-      const uploadResultAnalysis = await withRetry(() => aiAnalysis.files.upload({
-        file: file,
-        config: {
-          mimeType: file.type || 'audio/mp3',
-          displayName: `analysis-${file.name}`
-        }
-      }));
-      const fileUriAnalysis = uploadResultAnalysis.uri;
-
-      // 1b. Upload file using Gemini SDK using the Transcript key
       const aiTranscript = new GoogleGenAI({ apiKey: transcriptApiKey });
-      const uploadResultTranscript = await withRetry(() => aiTranscript.files.upload({
-        file: file,
-        config: {
-          mimeType: file.type || 'audio/mp3',
-          displayName: `transcript-${file.name}`
+
+      // 1. Build audio chunks (60s each) from stored AudioBuffer
+      const CHUNK_SECONDS = 60;
+      const audioBuffer = audioBufferRef.current;
+      const chunkFiles: { file: File; offsetSec: number }[] = [];
+
+      if (audioBuffer && audioBuffer.duration > CHUNK_SECONDS) {
+        const sr = audioBuffer.sampleRate;
+        const chunkSamples = sr * CHUNK_SECONDS;
+        for (let start = 0; start < audioBuffer.length; start += chunkSamples) {
+          const end = Math.min(start + chunkSamples, audioBuffer.length);
+          chunkFiles.push({ file: audioBufferToWav(audioBuffer, start, end), offsetSec: start / sr });
         }
-      }));
-      const fileUriTranscript = uploadResultTranscript.uri;
+      } else {
+        // Audio is short enough — treat the original file as a single chunk
+        chunkFiles.push({ file: file, offsetSec: 0 });
+      }
+
+      // 2. Upload full file (for analysis) + all chunks (for transcript) in parallel
+      const [uploadResultAnalysis, ...chunkUploadResults] = await Promise.all([
+        withRetry(() => aiAnalysis.files.upload({
+          file: file,
+          config: { mimeType: file.type || 'audio/mp3', displayName: `analysis-${file.name}` }
+        })),
+        ...chunkFiles.map(({ file: chunkFile }, idx) =>
+          withRetry(() => aiTranscript.files.upload({
+            file: chunkFile,
+            config: { mimeType: 'audio/wav', displayName: `chunk-${idx}-${file.name}` }
+          }))
+        )
+      ]);
+
+      const fileUriAnalysis = uploadResultAnalysis.uri;
 
       // 2. Generate JSON Analysis directly
       setIsGeneratingJson(true);
       try {
+        // Content safety — full file
         const analysisPromise = withRetry(() => aiAnalysis.models.generateContent({
           model: 'gemini-3.1-pro-preview',
           contents: [
@@ -301,17 +360,21 @@ export default function App() {
           config: { responseMimeType: "application/json" }
         }));
 
-        const transcriptPromise = withRetry(() => aiTranscript.models.generateContent({
-          model: 'gemini-3.1-pro-preview',
-          contents: [
-            {
-              fileData: {
-                fileUri: fileUriTranscript,
-                mimeType: file.type || 'audio/mp3'
-              }
-            },
-            `Generate a transcript of this audio in JSON format exactly like this:
+        // Transcript — one request per chunk, all in parallel
+        const transcriptPromises = chunkUploadResults.map((uploadResult, idx) => {
+          const offsetSec = chunkFiles[idx].offsetSec;
+          return withRetry(() => aiTranscript.models.generateContent({
+            model: 'gemini-3.1-pro-preview',
+            contents: [
+              {
+                fileData: {
+                  fileUri: uploadResult.uri,
+                  mimeType: 'audio/wav'
+                }
+              },
+              `This audio starts at ${Math.floor(offsetSec / 60)}m ${Math.floor(offsetSec % 60)}s in the original recording. Generate a transcript in JSON format exactly like this:
 {
+  "detected_language": "Primary language spoken (e.g. Hindi, Tamil, English, mixed Hindi-English)",
   "speakers": ["Speaker 1", "Speaker 2"],
   "transcript_by_turn": [
     {
@@ -322,6 +385,7 @@ export default function App() {
     }
   ]
 }
+IMPORTANT: All timestamps must be absolute (offset from start of full recording, not this chunk). This chunk starts at ${Math.floor(offsetSec / 60).toString().padStart(2, '0')}:${Math.floor(offsetSec % 60).toString().padStart(2, '0')}.
 **TRANSCRIPTION RULES:**
 - Native Script: ALWAYS write the spoken words in their native Unicode script. Telugu → తెలుగు లిపి, Hindi → देवनागरी, Tamil → தமிழ், Kannada → ಕನ್ನಡ, etc. NEVER use Roman/Latin transliteration.
 - English words spoken within a native-language sentence: keep them in English as spoken.
@@ -331,36 +395,98 @@ export default function App() {
 - Cut-off Sentences: If a speaker is interrupted, end with a dash —.
 - Accuracy: Write exactly what you hear. No paraphrasing or commentary.
 - Speaker Labels: Always use Speaker 1, Speaker 2, etc. Each speaker always starts on a new line.`
-          ],
-          config: { responseMimeType: "application/json" }
-        }));
+            ],
+            config: { responseMimeType: "application/json" }
+          }));
+        });
 
-        const [analysisSettled, transcriptSettled] = await Promise.allSettled([analysisPromise, transcriptPromise]);
+        const [analysisRes, ...chunkTranscriptResults] = await Promise.all([analysisPromise, ...transcriptPromises]);
 
         let aiDataObj = {};
-        let transcriptDataObj = {};
+        let transcriptDataObj: any = {};
 
-        if (analysisSettled.status === 'fulfilled') {
-          try {
-            const cleanAnalysis = (analysisSettled.value.text || "{}").replace(/```json/gi, '').replace(/```/g, '').trim();
-            aiDataObj = JSON.parse(cleanAnalysis);
-          } catch (e) {
-            console.error("Analysis JSON parse error:", e, analysisSettled.value.text);
-          }
-        } else {
-          console.error("Analysis API call failed:", analysisSettled.reason);
+        try {
+          const cleanAnalysis = (analysisRes.text || "{}").replace(/```json/gi, '').replace(/```/g, '').trim();
+          aiDataObj = JSON.parse(cleanAnalysis);
+        } catch (e) {
+          console.error("Analysis JSON parse error:", e);
         }
 
-        if (transcriptSettled.status === 'fulfilled') {
+
+        // Merge transcript chunks into a single transcript
+        const allTurns: any[] = [];
+        let detectedLanguage = '';
+        const speakerSet = new Set<string>();
+
+        for (const chunkRes of chunkTranscriptResults) {
           try {
-            const cleanTranscript = (transcriptSettled.value.text || "{}").replace(/```json/gi, '').replace(/```/g, '').trim();
-            transcriptDataObj = JSON.parse(cleanTranscript);
-          } catch (e) {
-            console.error("Transcript JSON parse error:", e, transcriptSettled.value.text);
-          }
-        } else {
-          console.error("Transcript API call failed:", transcriptSettled.reason);
+            const clean = (chunkRes.text || "{}").replace(/```json/gi, '').replace(/```/g, '').trim();
+            const parsed = JSON.parse(clean);
+            if (parsed.detected_language && !detectedLanguage) detectedLanguage = parsed.detected_language;
+            (parsed.speakers || []).forEach((s: string) => speakerSet.add(s));
+            (parsed.transcript_by_turn || []).forEach((t: any) => allTurns.push(t));
+          } catch (e) {}
         }
+
+        // 3. Annotation step — enrich each turn with conversation labels
+        let annotatedTurns = allTurns;
+        if (allTurns.length > 0) {
+          try {
+            const transcriptText = allTurns.map(t =>
+              `[${t.start_time} --> ${t.end_time}] ${t.speaker}: ${t.text}`
+            ).join('\n');
+
+            const annotationRes = await withRetry(() => aiAnalysis.models.generateContent({
+              model: 'gemini-3.1-pro-preview',
+              contents: [`You are a conversation analyst. Annotate every turn in the transcript below. Return ONLY a valid JSON array — no markdown, no commentary.
+
+Each element must follow this exact structure:
+{
+  "turn_id": <integer starting at 1>,
+  "speaker": "<speaker label>",
+  "timestamp_start": "<start time>",
+  "timestamp_end": "<end time>",
+  "duration_seconds": <end minus start in seconds, 2 decimal places>,
+  "gap_from_previous_seconds": <gap since previous turn ended, 0.0 for first turn>,
+  "text": "<original text verbatim>",
+  "annotations": {
+    "emotion": "<neutral|frustrated|anxious|confident|skeptical|amused|excited|confused|resigned|sarcastic>",
+    "disfluency": ["<none|filler|false_start|self_repair|repetition|long_pause>"],
+    "speaking_rate": "<slow|normal|fast>",
+    "turn_taking": "<normal_transition|latch|overlap|interruption|long_gap>",
+    "emphasis": ["<stressed words>"]
+  }
+}
+
+RULES:
+- gap_from_previous_seconds 0–0.5 → latch; 0.5–1.0 → normal_transition; ≥1.0 → long_gap; <0 → overlap or interruption
+- WPM = (word_count / duration_seconds) × 60: <120 → slow, 120–170 → normal, >170 → fast
+- disfluency: pick ALL that apply; use ["none"] if clean
+- emphasis: list only actually stressed words; [] if none
+- First turn: turn_taking = "normal_transition", gap_from_previous_seconds = 0.0
+
+TRANSCRIPT:
+${transcriptText}`],
+            }));
+
+            const rawAnnotation = annotationRes.text || "[]";
+            const cleanAnnotation = rawAnnotation.replace(/```json/gi, '').replace(/```/g, '').trim();
+            const annotationData: any[] = JSON.parse(cleanAnnotation);
+            console.log("Annotation data received:", annotationData.length, "turns");
+            annotatedTurns = allTurns.map((turn, idx) => {
+              const annotated = annotationData[idx] || annotationData.find((a: any) => a.turn_id === idx + 1);
+              return annotated ? { ...turn, annotations: annotated.annotations } : turn;
+            });
+          } catch (e) {
+            console.error("Annotation step failed:", e);
+          }
+        }
+
+        transcriptDataObj = {
+          detected_language: detectedLanguage,
+          speakers: Array.from(speakerSet),
+          transcript_by_turn: annotatedTurns
+        };
 
         const aiData = { ...aiDataObj, ...transcriptDataObj };
 
@@ -553,9 +679,9 @@ export default function App() {
                     <Shield className="w-5 h-5 text-neutral-500" />
                     Content Safety
                   </h3>
-                  <div className="bg-neutral-50 border border-neutral-200 border-dashed rounded-xl p-6 flex flex-col items-center justify-center text-neutral-500">
-                    <BrainCircuit className="w-8 h-8 mb-2 text-neutral-400" />
-                    <p>Click "Run AI Analysis" below to run AI-powered safety checks.</p>
+                  <div className={`border border-dashed rounded-xl p-6 flex flex-col items-center justify-center ${aiJsonResult ? 'bg-amber-50 border-amber-300 text-amber-700' : 'bg-neutral-50 border-neutral-200 text-neutral-500'}`}>
+                    {aiJsonResult ? <AlertTriangle className="w-8 h-8 mb-2 text-amber-500" /> : <BrainCircuit className="w-8 h-8 mb-2 text-neutral-400" />}
+                    <p>{aiJsonResult ? 'Analysis response could not be parsed. Re-run AI Analysis.' : 'Click "Run AI Analysis" below to run AI-powered safety checks.'}</p>
                   </div>
                 </div>
               )}
@@ -582,9 +708,9 @@ export default function App() {
                     <MessageSquare className="w-5 h-5 text-neutral-500" />
                     Conversation Quality
                   </h3>
-                  <div className="bg-neutral-50 border border-neutral-200 border-dashed rounded-xl p-6 flex flex-col items-center justify-center text-neutral-500">
-                    <BrainCircuit className="w-8 h-8 mb-2 text-neutral-400" />
-                    <p>Click "Run AI Analysis" below to run AI-powered quality checks.</p>
+                  <div className={`border border-dashed rounded-xl p-6 flex flex-col items-center justify-center ${aiJsonResult ? 'bg-amber-50 border-amber-300 text-amber-700' : 'bg-neutral-50 border-neutral-200 text-neutral-500'}`}>
+                    {aiJsonResult ? <AlertTriangle className="w-8 h-8 mb-2 text-amber-500" /> : <BrainCircuit className="w-8 h-8 mb-2 text-neutral-400" />}
+                    <p>{aiJsonResult ? 'Analysis response could not be parsed. Re-run AI Analysis.' : 'Click "Run AI Analysis" below to run AI-powered quality checks.'}</p>
                   </div>
                 </div>
               )}
@@ -608,6 +734,11 @@ export default function App() {
                   <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 text-neutral-700">
                     <MessageSquare className="w-5 h-5 text-neutral-500" />
                     Transcript
+                    {parsedAiData.ai_analysis.detected_language && (
+                      <span className="ml-2 text-xs font-medium bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                        {parsedAiData.ai_analysis.detected_language}
+                      </span>
+                    )}
                   </h3>
                   <div className="bg-white p-6 rounded-xl border border-neutral-200 shadow-sm space-y-4">
                     {parsedAiData.ai_analysis.transcript_by_turn.map((turn: any, idx: number) => (
@@ -696,6 +827,8 @@ export default function App() {
     </div>
   );
 }
+
+
 
 function MetricCard({ label, value }: { label: string, value: string | number }) {
   return (
