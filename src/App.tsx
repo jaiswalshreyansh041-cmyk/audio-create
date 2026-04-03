@@ -372,29 +372,55 @@ export default function App() {
                   mimeType: 'audio/wav'
                 }
               },
-              `This audio starts at ${Math.floor(offsetSec / 60)}m ${Math.floor(offsetSec % 60)}s in the original recording. Generate a transcript in JSON format exactly like this:
+              `You are an expert verbatim audio transcriber. This audio starts at ${Math.floor(offsetSec / 60)}m ${Math.floor(offsetSec % 60)}s in the original recording. Generate a transcript in JSON format exactly like this:
 {
   "detected_language": "Primary language spoken (e.g. Hindi, Tamil, English, mixed Hindi-English)",
   "speakers": ["Speaker 1", "Speaker 2"],
   "transcript_by_turn": [
     {
       "speaker": "Speaker 1",
-      "start_time": "[MM:SS]",
-      "end_time": "[MM:SS]",
-      "text": "Exact verbatim text written in the NATIVE SCRIPT of the spoken language (e.g. Telugu: తెలుగు లిపి, Hindi: देवनागरी, Tamil: தமிழ் எழுத்து). Do NOT romanize or transliterate — always use the native Unicode script."
+      "start_time": "MM:SS",
+      "end_time": "MM:SS",
+      "text": "Verbatim text with all inline tags as specified in the rules below."
     }
   ]
 }
 IMPORTANT: All timestamps must be absolute (offset from start of full recording, not this chunk). This chunk starts at ${Math.floor(offsetSec / 60).toString().padStart(2, '0')}:${Math.floor(offsetSec % 60).toString().padStart(2, '0')}.
-**TRANSCRIPTION RULES:**
-- Native Script: ALWAYS write the spoken words in their native Unicode script. Telugu → తెలుగు లిపి, Hindi → देवनागरी, Tamil → தமிழ், Kannada → ಕನ್ನಡ, etc. NEVER use Roman/Latin transliteration.
-- English words spoken within a native-language sentence: keep them in English as spoken.
-- Beeps / Sensitive Info: If a beep replaces PII (name, DOB, phone), write [beep]. Never guess the hidden info.
-- Overlapping / Interruptions: If two speakers talk at the same time, write each speaker on a separate line with their respective timestamps. Do NOT add notes like (overlapping) or (interruption).
-- Fillers: Keep natural fillers exactly as spoken, written in native script.
-- Cut-off Sentences: If a speaker is interrupted, end with a dash —.
-- Accuracy: Write exactly what you hear. No paraphrasing or commentary.
-- Speaker Labels: Always use Speaker 1, Speaker 2, etc. Each speaker always starts on a new line.`
+
+**TRANSCRIPTION RULES — follow ALL rules without exception:**
+
+**1. Strict Verbatim**
+- Transcribe every word exactly as spoken.
+- Include every filler (um, uh, hmm, etc.) exactly as heard.
+- Tag structural disfluencies inline at the exact point they occur: use [false_start] before a false start and [repetition] before a repeated word/phrase.
+- Do NOT fix grammar, reorder words, or paraphrase.
+
+**2. Acoustic Events**
+- Every audible non-speech event must be tagged inline where it occurs.
+- Use ONLY these tags: [noise], [laughter], [cough], [music], [silence], [unintelligible].
+
+**3. Timestamps & Turns**
+- Each speaker turn must have start_time and end_time in MM:SS format.
+- For overlapping speech, write each speaker as a separate turn entry with their actual start/end timestamps — do NOT add notes like "(overlapping)".
+
+**4. Entity Tagging (BIO Format)**
+- Tag all named entities inline using BIO format.
+- Format: [B-TYPE] FirstWord [I-TYPE] NextWord [/TYPE]
+- Allowed entity types: PERSON, ORG, LOCATION, DATE, TIME, MONEY, QUANTITY, MEDICAL_TERM, LEGAL_TERM, PRODUCT
+- English entities spoken inside a non-English segment must get a language wrapper: [LANG:EN][B-PRODUCT] iPhone [/PRODUCT][/LANG:EN]
+
+**5. Orthography & Numbers**
+- Apply full and correct punctuation (commas, periods, question marks, etc.).
+- Capitalize the first letter of every sentence and all proper nouns.
+- Numbers below 100: write in words (e.g., "thirty-two").
+- Numbers 100 and above: write in digits (e.g., "150").
+- Dates: always write in digits (e.g., "04/04/2026").
+
+**6. Multilingual & Script Rules**
+- Native Script: ALWAYS transcribe non-English speech in the correct native Unicode script (Hindi → देवनागरी, Tamil → தமிழ், Telugu → తెలుగు, Kannada → ಕನ್ನಡ, Arabic → العربية, etc.). NEVER romanize or transliterate native speech.
+- Everyday English loanwords (e.g., "bottle", "bus", "time", "mobile") spoken inside a native-language sentence: keep those specific words in English script, not transliterated.
+- Beeps / Sensitive Info: If a beep masks PII (name, DOB, phone number), write [beep]. Never guess the hidden content.
+- Cut-off sentences: If a speaker is interrupted mid-sentence, end the text with a dash —.`
             ],
             config: { responseMimeType: "application/json" }
           }));
