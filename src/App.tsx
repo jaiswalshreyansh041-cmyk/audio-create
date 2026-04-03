@@ -454,7 +454,8 @@ Each element must follow this exact structure:
     "disfluency": ["<none|filler|false_start|self_repair|repetition|long_pause>"],
     "speaking_rate": "<slow|normal|fast>",
     "turn_taking": "<normal_transition|latch|overlap|interruption|long_gap>",
-    "emphasis": ["<stressed words>"]
+    "emphasis": ["<stressed words>"],
+    "intent": "<statement|question|proposal|agreement|disagreement|correction|request|elaboration|backchannel>"
   }
 }
 
@@ -464,6 +465,7 @@ RULES:
 - disfluency: pick ALL that apply; use ["none"] if clean
 - emphasis: list only actually stressed words; [] if none
 - First turn: turn_taking = "normal_transition", gap_from_previous_seconds = 0.0
+- intent: statement = sharing info; question = asking for info; proposal = suggesting idea; agreement = expressing agreement; disagreement = pushing back; correction = fixing an error; request = asking for action; elaboration = adding detail to prior turn; backchannel = acknowledgment only (mm-hmm, right, okay)
 
 TRANSCRIPT:
 ${transcriptText}`],
