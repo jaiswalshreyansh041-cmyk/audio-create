@@ -477,7 +477,7 @@ ${transcriptText}`],
             console.log("Annotation data received:", annotationData.length, "turns");
             annotatedTurns = allTurns.map((turn, idx) => {
               const annotated = annotationData[idx] || annotationData.find((a: any) => a.turn_id === idx + 1);
-              return annotated ? { ...turn, annotations: annotated.annotations } : turn;
+              return annotated ? { turn_id: idx + 1, ...turn, annotations: annotated.annotations } : { turn_id: idx + 1, ...turn };
             });
           } catch (e) {
             console.error("Annotation step failed:", e);
