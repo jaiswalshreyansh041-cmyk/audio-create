@@ -409,19 +409,38 @@ IMPORTANT: All timestamps must be absolute (offset from start of full recording,
 - Allowed entity types: PERSON, ORG, LOCATION, DATE, TIME, MONEY, QUANTITY, MEDICAL_TERM, LEGAL_TERM, PRODUCT
 
 **CRITICAL — [LANG:EN] wrapper rule:**
-ANY entity whose words are in English (Latin script) and which appears inside a non-English (e.g. Hindi, Tamil, Telugu) sentence MUST be wrapped with [LANG:EN]...[/LANG:EN] around the entire BIO tag. This applies to EVERY entity type — not just PRODUCT.
+ANY entity whose words are in English (Latin script) and which appears inside a non-English (e.g. Hindi, Tamil, Telugu) sentence MUST be wrapped with [LANG:EN]...[/LANG:EN] around the entire BIO tag. This rule applies to EVERY entity type without exception.
 
-Correct examples:
-- English PERSON name in Hindi: हाँ [LANG:EN][B-PERSON] Prince [/PERSON][/LANG:EN], कैसे हो?
-- English ORG in Hindi: मैं [LANG:EN][B-ORG] Google [/ORG][/LANG:EN] पे काम करता हूँ।
-- English PRODUCT in Hindi: उसने [LANG:EN][B-PRODUCT] iPhone [/PRODUCT][/LANG:EN] खरीदा।
-- English LOCATION in Hindi: वो [LANG:EN][B-LOCATION] Mumbai [/LOCATION][/LANG:EN] गया।
-- Multi-word English entity in Hindi: [LANG:EN][B-ORG] Google [I-ORG] Drive [/ORG][/LANG:EN] use करो।
+Correct examples (English entity inside Hindi sentence):
+- PERSON:   हाँ [LANG:EN][B-PERSON] Prince [/PERSON][/LANG:EN], कैसे हो?
+- ORG:      मैं [LANG:EN][B-ORG] Google [/ORG][/LANG:EN] पे काम करता हूँ।
+- ORG multi-word: [LANG:EN][B-ORG] Google [I-ORG] Drive [/ORG][/LANG:EN] use करो।
+- PRODUCT:  उसने [LANG:EN][B-PRODUCT] iPhone [/PRODUCT][/LANG:EN] खरीदा।
+- LOCATION: वो [LANG:EN][B-LOCATION] Mumbai [/LOCATION][/LANG:EN] गया।
+- DATE:     meeting [LANG:EN][B-DATE] 5th [I-DATE] March [/DATE][/LANG:EN] को है।
 
-Wrong (missing wrapper — do NOT do this):
-- हाँ [B-PERSON] Prince [/PERSON], कैसे हो?  ← WRONG, PERSON is English in a Hindi sentence
+Wrong (entity in Hindi with no wrapper — NEVER do this):
+- हाँ [B-PERSON] Prince [/PERSON], कैसे हो?  ← WRONG
 
-Note: Everyday English loanwords that are NOT named entities (e.g. "photos", "storage", "cloud", "upload") do NOT get BIO tags — they are simply kept in English script per Rule 6.
+**Entity vs. Loanword — the exact boundary:**
+Ask yourself: Is this word a SPECIFIC named thing (a brand, a person's name, a place name, a named product)?
+→ YES → it is a named entity → apply BIO tag + [LANG:EN] wrapper.
+→ NO  → it is a generic English loanword → keep in English script only, NO BIO tag.
+
+Named entity examples (MUST tag):
+- "Google", "Amazon", "iCloud", "WhatsApp" → ORG or PRODUCT
+- "Prince", "Riya", "John" → PERSON
+- "Mumbai", "Delhi", "London" → LOCATION
+- "iPhone", "Samsung Galaxy", "Google Photos" → PRODUCT
+- "Google Drive", "Dropbox", "OneDrive" → PRODUCT (named cloud services)
+
+Generic loanword examples (do NOT tag — Rule 6 applies):
+- "photos", "photo", "video", "file" → generic nouns
+- "cloud storage", "storage", "internet" → generic tech concepts, not a specific named service
+- "upload", "download", "save", "backup" → verbs/actions
+- "phone", "mobile", "laptop", "computer" → generic device nouns
+- "companies", "apps", "service", "plan" → generic category nouns
+- "plus", "like", "basically", "actually" → discourse fillers/connectors
 
 **5. Orthography & Numbers**
 - Apply full and correct punctuation (commas, periods, question marks, etc.).
