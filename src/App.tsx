@@ -404,10 +404,24 @@ IMPORTANT: All timestamps must be absolute (offset from start of full recording,
 - For overlapping speech, write each speaker as a separate turn entry with their actual start/end timestamps — do NOT add notes like "(overlapping)".
 
 **4. Entity Tagging (BIO Format)**
-- Tag all named entities inline using BIO format.
-- Format: [B-TYPE] FirstWord [I-TYPE] NextWord [/TYPE]
+- Tag ALL named entities inline using BIO format — even inside non-English turns.
+- Base format: [B-TYPE] FirstWord [I-TYPE] NextWord [/TYPE]
 - Allowed entity types: PERSON, ORG, LOCATION, DATE, TIME, MONEY, QUANTITY, MEDICAL_TERM, LEGAL_TERM, PRODUCT
-- English entities spoken inside a non-English segment must get a language wrapper: [LANG:EN][B-PRODUCT] iPhone [/PRODUCT][/LANG:EN]
+
+**CRITICAL — [LANG:EN] wrapper rule:**
+ANY entity whose words are in English (Latin script) and which appears inside a non-English (e.g. Hindi, Tamil, Telugu) sentence MUST be wrapped with [LANG:EN]...[/LANG:EN] around the entire BIO tag. This applies to EVERY entity type — not just PRODUCT.
+
+Correct examples:
+- English PERSON name in Hindi: हाँ [LANG:EN][B-PERSON] Prince [/PERSON][/LANG:EN], कैसे हो?
+- English ORG in Hindi: मैं [LANG:EN][B-ORG] Google [/ORG][/LANG:EN] पे काम करता हूँ।
+- English PRODUCT in Hindi: उसने [LANG:EN][B-PRODUCT] iPhone [/PRODUCT][/LANG:EN] खरीदा।
+- English LOCATION in Hindi: वो [LANG:EN][B-LOCATION] Mumbai [/LOCATION][/LANG:EN] गया।
+- Multi-word English entity in Hindi: [LANG:EN][B-ORG] Google [I-ORG] Drive [/ORG][/LANG:EN] use करो।
+
+Wrong (missing wrapper — do NOT do this):
+- हाँ [B-PERSON] Prince [/PERSON], कैसे हो?  ← WRONG, PERSON is English in a Hindi sentence
+
+Note: Everyday English loanwords that are NOT named entities (e.g. "photos", "storage", "cloud", "upload") do NOT get BIO tags — they are simply kept in English script per Rule 6.
 
 **5. Orthography & Numbers**
 - Apply full and correct punctuation (commas, periods, question marks, etc.).
