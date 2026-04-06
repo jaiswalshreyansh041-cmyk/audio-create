@@ -430,9 +430,27 @@ export default function App() {
                   mimeType: 'audio/wav'
                 }
               },
-              `You are an expert verbatim audio transcriber. This audio starts at ${Math.floor(offsetSec / 60)}m ${Math.floor(offsetSec % 60)}s in the original recording. Generate a transcript in JSON format exactly like this:
+              `You are an expert verbatim audio transcriber with deep knowledge of Indian languages and scripts.
+
+**STEP 1 — Identify the language FIRST before transcribing anything.**
+Listen carefully to the phonology and vocabulary of the audio and determine the exact language spoken. Indian languages sound similar but use completely different scripts:
+- Kannada sounds like Telugu but uses a DIFFERENT script: ಕನ್ನಡ (Kannada) ≠ తెలుగు (Telugu)
+- Hindi uses Devanagari (देवनागरी) — NOT the same as Gujarati or Marathi even though they share the same script family
+- Tamil (தமிழ்) is completely distinct from all other South Indian languages
+
+Common Indian languages and their ONLY correct scripts:
+  • Kannada   → ಕನ್ನಡ ಲಿಪಿ   (e.g. ಹೋದಾ, ತಗೊಂಡು, ಏನು, ಮಾಡು, ಬಾ, ಅವರು)
+  • Telugu    → తెలుగు లిపి  (e.g. వెళ్ళారు, తీసుకున్నారు, ఏమి, చేయండి)
+  • Hindi     → देवनागरी     (e.g. गया, लिया, क्या, करो, आप)
+  • Tamil     → தமிழ் எழுத்து (e.g. போனாங்க, எடுத்தாங்க, என்ன, செய்)
+  • Malayalam → മലയാളം       (e.g. പോയി, എടുത്തു, എന്ത്, ചെയ്യ്)
+  • Marathi   → मराठी (देवनागरी) (e.g. गेलो, घेतलं, काय, कर)
+
+**NEVER mix up scripts. If the audio is Kannada, every native word MUST be in ಕನ್ನಡ script — not Telugu, not Hindi, not Roman.**
+
+This audio starts at ${Math.floor(offsetSec / 60)}m ${Math.floor(offsetSec % 60)}s in the original recording. Generate a transcript in JSON format exactly like this:
 {
-  "detected_language": "Primary language spoken (e.g. Hindi, Tamil, English, mixed Hindi-English)",
+  "detected_language": "The exact language spoken (e.g. Kannada, Telugu, Hindi, Tamil, mixed Kannada-English). Be precise — do not guess.",
   "speakers": ["Speaker 1", "Speaker 2"],
   "transcript_by_turn": [
     {
@@ -508,8 +526,15 @@ Generic loanword examples (do NOT tag — Rule 6 applies):
 - Dates: always write in digits (e.g., "04/04/2026").
 
 **6. Multilingual & Script Rules**
-- Native Script: ALWAYS transcribe non-English speech in the correct native Unicode script (Hindi → देवनागरी, Tamil → தமிழ், Telugu → తెలుగు, Kannada → ಕನ್ನಡ, Arabic → العربية, etc.). NEVER romanize or transliterate native speech.
-- Everyday English loanwords (e.g., "bottle", "bus", "time", "mobile") spoken inside a native-language sentence: keep those specific words in English script, not transliterated.
+- Native Script: ALWAYS transcribe non-English speech in the correct native Unicode script. NEVER romanize or transliterate native speech.
+- Script must match the detected language exactly:
+  • Kannada audio   → ALL native words in ಕನ್ನಡ script   (NEVER use Telugu తెలుగు or Hindi देवनागरी for Kannada)
+  • Telugu audio    → ALL native words in తెలుగు script   (NEVER use Kannada ಕನ್ನಡ)
+  • Hindi audio     → ALL native words in देवनागरी        (NEVER use ಕನ್ನಡ or తెలుగు)
+  • Tamil audio     → ALL native words in தமிழ் script
+  • Malayalam audio → ALL native words in മലയാളം script
+- Kannada vs Telugu confusion warning: These two languages sound similar but are completely different. Kannada example: "ಅದು ಎಲ್ಲಿ ಇದೆ?" — Telugu equivalent would be: "అది ఎక్కడ ఉంది?" — they are NOT interchangeable.
+- Everyday English loanwords (e.g., "oh", "bag", "phone", "ok", "yes") spoken inside a native-language sentence: keep those specific words in English script, not transliterated.
 - Beeps / Sensitive Info: If a beep masks PII (name, DOB, phone number), write [beep]. Never guess the hidden content.
 - Cut-off sentences: If a speaker is interrupted mid-sentence, end the text with a dash —.`
             ],
