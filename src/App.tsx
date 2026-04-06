@@ -257,6 +257,9 @@ export default function App() {
     ];
 
     const escapeCell = (val: string) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+    // Convert snake_case / lowercase values to Title Case for display
+    const toTitle = (val: string) =>
+      (val ?? '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
     const rows = turns.map((turn: any) => {
       const ann = turn.annotations || {};
@@ -270,16 +273,16 @@ export default function App() {
         escapeCell(turn.start_time ?? ''),
         escapeCell(turn.end_time ?? ''),
         escapeCell(turn.text ?? ''),
-        escapeCell(ann.emotion ?? ''),
-        escapeCell(ann.intent ?? ''),
-        escapeCell(ann.speaking_rate ?? ''),
+        escapeCell(toTitle(ann.emotion ?? '')),
+        escapeCell(toTitle(ann.intent ?? '')),
+        escapeCell(toTitle(ann.speaking_rate ?? '')),
         escapeCell(disfluencies.includes('none') ? 'Yes' : 'No'),
         escapeCell(disfluencies.includes('filler') ? 'Yes' : 'No'),
         escapeCell(disfluencies.includes('false_start') ? 'Yes' : 'No'),
         escapeCell(disfluencies.includes('self_repair') ? 'Yes' : 'No'),
         escapeCell(disfluencies.includes('repetition') ? 'Yes' : 'No'),
         escapeCell(disfluencies.includes('long_pause') ? 'Yes' : 'No'),
-        escapeCell(ann.turn_taking ?? ''),
+        escapeCell(toTitle(ann.turn_taking ?? '')),
         escapeCell(emphasis.join(', ')),
         escapeCell(''),
       ].join(',');
