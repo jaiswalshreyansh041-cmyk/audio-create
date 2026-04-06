@@ -659,7 +659,14 @@ turn_taking classification — use EXACTLY one of: latch | normal_transition | o
 - For overlap vs interruption: if the prior speaker's text ends with "—" (cut off) → interruption; otherwise → overlap
 - WPM = (word_count / duration_seconds) × 60: <120 → slow, 120–170 → normal, >170 → fast
 - disfluency: pick ALL that apply; use ["none"] if clean
-- emphasis: list only actually stressed words; [] if none
+- emphasis: list words that carry notable stress or communicative weight in the turn. Since only text is available (no audio), infer stress from textual and semantic signals:
+    • Intensifiers / degree adverbs (e.g. "very", "extremely", "খুবই", "অনেক", "বিলকুল", "बिल्कुल")
+    • Words in a correction turn (intent = "correction") — the corrected word is typically stressed
+    • Repeated or re-stated words within the same turn (repetition for emphasis)
+    • Words in exclamatory or emotionally heightened turns (emotion = "frustrated" / "excited" / "confident") that carry the core emotional load
+    • Contrastive words explicitly juxtaposing two ideas (e.g. "না … হ্যাঁ", "not X but Y")
+    • Code-switched words inserted for rhetorical punch (e.g. English words like "seriously", "actually" inside a Bengali sentence)
+    • Use [] only if none of the above signals are present
 - intent: statement = sharing info; question = asking for info; proposal = suggesting idea; agreement = expressing agreement; disagreement = pushing back; correction = fixing an error; request = asking for action; elaboration = adding detail to prior turn; backchannel = acknowledgment only (mm-hmm, right, okay)
 - background_noise_level: infer from audio quality cues in the transcript (e.g. [noise], [beep], interruptions) and spoken context
 
