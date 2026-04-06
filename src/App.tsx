@@ -242,6 +242,61 @@ export default function App() {
     return `${m}m ${s}s`;
   };
 
+  const downloadCSV = () => {
+    if (!parsedAiData?.ai_analysis?.transcript_by_turn) return;
+    const turns = parsedAiData.ai_analysis.transcript_by_turn;
+    const taskId = file?.name.split('.')[0] || 'audio';
+
+    const headers = [
+      'Task ID', 'Turn No.', 'Speaker', 'Start Time', 'End Time',
+      'Original Utterance',
+      'Emotion', 'Intent', 'Speaking Rate',
+      'Disfluency: None', 'Disfluency: Filler', 'Disfluency: False Start',
+      'Disfluency: Self-repair', 'Disfluency: Repetition', 'Disfluency: Long Pause',
+      'Turn-taking Event', 'Emphasis', 'Annotator Notes'
+    ];
+
+    const escapeCell = (val: string) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+
+    const rows = turns.map((turn: any) => {
+      const ann = turn.annotations || {};
+      const disfluencies: string[] = Array.isArray(ann.disfluency) ? ann.disfluency : [];
+      const emphasis: string[] = Array.isArray(ann.emphasis) ? ann.emphasis : [];
+
+      return [
+        escapeCell(taskId),
+        escapeCell(String(turn.turn_id ?? '')),
+        escapeCell(turn.speaker ?? ''),
+        escapeCell(turn.start_time ?? ''),
+        escapeCell(turn.end_time ?? ''),
+        escapeCell(turn.text ?? ''),
+        escapeCell(ann.emotion ?? ''),
+        escapeCell(ann.intent ?? ''),
+        escapeCell(ann.speaking_rate ?? ''),
+        escapeCell(disfluencies.includes('none') ? 'TRUE' : 'FALSE'),
+        escapeCell(disfluencies.includes('filler') ? 'TRUE' : 'FALSE'),
+        escapeCell(disfluencies.includes('false_start') ? 'TRUE' : 'FALSE'),
+        escapeCell(disfluencies.includes('self_repair') ? 'TRUE' : 'FALSE'),
+        escapeCell(disfluencies.includes('repetition') ? 'TRUE' : 'FALSE'),
+        escapeCell(disfluencies.includes('long_pause') ? 'TRUE' : 'FALSE'),
+        escapeCell(ann.turn_taking ?? ''),
+        escapeCell(emphasis.join(', ')),
+        escapeCell(''),
+      ].join(',');
+    });
+
+    const csvContent = [headers.map(escapeCell).join(','), ...rows].join('\n');
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${taskId}_transcript_annotation.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const runAiAnalysis = async () => {
     if (!file) return;
     setIsAiAnalyzing(true);
@@ -915,6 +970,15 @@ ${transcriptText}`],
                     <Download className="w-5 h-5" />
                     Download JSON Analysis
                   </button>
+                  {parsedAiData?.ai_analysis?.transcript_by_turn && (
+                    <button
+                      onClick={downloadCSV}
+                      className="flex items-center justify-center gap-2 px-6 py-3 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-colors shadow-sm w-full sm:w-auto"
+                    >
+                      <Download className="w-5 h-5" />
+                      Download CSV Annotation
+                    </button>
+                  )}
                 </div>
               )}
             </section>
