@@ -598,11 +598,11 @@ Generic loanword examples (do NOT tag — Rule 6 applies):
 RULES:
 
 turn_taking classification — use EXACTLY one of: latch | normal_transition | overlap | interruption | long_gap
-  • latch          gap_from_previous_seconds 0 – 0.75s  → response begins almost instantly, no gap or overlap, turns feel seamlessly glued; listener anticipated the ending; common in fast-paced or familiar exchanges
-  • normal_transition  gap 0.75 – 1.25s              → short comfortable pause, most natural pacing, enough time to process and respond, no awkwardness
+  • latch          gap_from_previous_seconds 0 – 0.25s  → response begins almost instantly, no gap or overlap, turns feel seamlessly glued; listener anticipated the ending; common in fast-paced or familiar exchanges
+  • normal_transition  gap 0.25 – 1.25s              → short comfortable pause, most natural pacing, enough time to process and respond, no awkwardness
   • overlap        gap_from_previous_seconds < 0 AND the previous speaker completes (or nearly completes) their thought → next speaker starts while previous is still talking, no intent to cut off, both voices briefly audible; signals agreement / enthusiasm / anticipation
   • interruption   gap_from_previous_seconds < 0 AND the previous speaker is forced to stop mid-point → deliberate cut-off, original speaker does not finish; signals dominance, urgency, disagreement, or frustration
-  • long_gap       gap_from_previous_seconds ≥ 2.5s   → prolonged uncomfortable silence; signals hesitation, confusion, careful thinking, emotional processing, or disengagement
+  • long_gap       gap_from_previous_seconds ≥ 1.25s  → prolonged uncomfortable silence; signals hesitation, confusion, careful thinking, emotional processing, or disengagement
 
 - First turn: turn_taking = "normal_transition", gap_from_previous_seconds = 0.0
 - For overlap vs interruption: if the prior speaker's text ends with "—" (cut off) → interruption; otherwise → overlap
