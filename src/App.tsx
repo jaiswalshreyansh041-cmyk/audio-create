@@ -488,11 +488,24 @@ Generic loanword examples (do NOT tag — Rule 6 applies):
         }
 
         // 3. Annotation step — enrich each turn with conversation labels
-        let annotatedTurns = allTurns;
+        // Always assign turn_id so turns have it even if annotation step fails
+        let annotatedTurns = allTurns.map((turn, idx) => ({ turn_id: idx + 1, ...turn }));
         if (allTurns.length > 0) {
           try {
-            const transcriptText = allTurns.map(t =>
-              `[${t.start_time} --> ${t.end_time}] ${t.speaker}: ${t.text}`
+            // Strip BIO/LANG tags before sending to annotation — raw brackets in mixed-script
+            // text cause the annotation model to emit malformed JSON.
+            const stripTags = (text: string) =>
+              text
+                .replace(/\[LANG:[A-Z]+\]/g, '')
+                .replace(/\[\/LANG:[A-Z]+\]/g, '')
+                .replace(/\[B-[A-Z_]+\]/g, '')
+                .replace(/\[I-[A-Z_]+\]/g, '')
+                .replace(/\[\/[A-Z_]+\]/g, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+
+            const transcriptText = allTurns.map((t, idx) =>
+              `[turn_id:${idx + 1}] [${t.start_time} --> ${t.end_time}] ${t.speaker}: ${stripTags(t.text)}`
             ).join('\n');
 
             const annotationRes = await withRetry(() => aiAnalysis.models.generateContent({
