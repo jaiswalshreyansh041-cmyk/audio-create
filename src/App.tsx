@@ -528,11 +528,19 @@ Generic loanword examples (do NOT tag — Rule 6 applies):
 }
 
 RULES:
-- gap_from_previous_seconds 0–0.5 → latch; 0.5–1.0 → normal_transition; ≥1.0 → long_gap; <0 → overlap or interruption
+
+turn_taking classification — use EXACTLY one of: latch | normal_transition | overlap | interruption | long_gap
+  • latch          gap_from_previous_seconds 0 – 0.75s  → response begins almost instantly, no gap or overlap, turns feel seamlessly glued; listener anticipated the ending; common in fast-paced or familiar exchanges
+  • normal_transition  gap 0.75 – 1.25s              → short comfortable pause, most natural pacing, enough time to process and respond, no awkwardness
+  • overlap        gap_from_previous_seconds < 0 AND the previous speaker completes (or nearly completes) their thought → next speaker starts while previous is still talking, no intent to cut off, both voices briefly audible; signals agreement / enthusiasm / anticipation
+  • interruption   gap_from_previous_seconds < 0 AND the previous speaker is forced to stop mid-point → deliberate cut-off, original speaker does not finish; signals dominance, urgency, disagreement, or frustration
+  • long_gap       gap_from_previous_seconds ≥ 2.5s   → prolonged uncomfortable silence; signals hesitation, confusion, careful thinking, emotional processing, or disengagement
+
+- First turn: turn_taking = "normal_transition", gap_from_previous_seconds = 0.0
+- For overlap vs interruption: if the prior speaker's text ends with "—" (cut off) → interruption; otherwise → overlap
 - WPM = (word_count / duration_seconds) × 60: <120 → slow, 120–170 → normal, >170 → fast
 - disfluency: pick ALL that apply; use ["none"] if clean
 - emphasis: list only actually stressed words; [] if none
-- First turn: turn_taking = "normal_transition", gap_from_previous_seconds = 0.0
 - intent: statement = sharing info; question = asking for info; proposal = suggesting idea; agreement = expressing agreement; disagreement = pushing back; correction = fixing an error; request = asking for action; elaboration = adding detail to prior turn; backchannel = acknowledgment only (mm-hmm, right, okay)
 - background_noise_level: infer from audio quality cues in the transcript (e.g. [noise], [beep], interruptions) and spoken context
 
