@@ -520,10 +520,25 @@ Generic loanword examples (do NOT tag — Rule 6 applies):
         let transcriptDataObj: any = {};
 
         try {
-          const cleanAnalysis = (analysisRes.text || "{}").replace(/```json/gi, '').replace(/```/g, '').trim();
-          aiDataObj = JSON.parse(cleanAnalysis);
+          const rawAnalysis = analysisRes.text || "{}";
+          // Strategy 1: strip markdown fences then parse
+          let cleanAnalysis = rawAnalysis.replace(/```json/gi, '').replace(/```/g, '').trim();
+          try {
+            aiDataObj = JSON.parse(cleanAnalysis);
+          } catch {
+            // Strategy 2: extract outermost {...} block in case model added surrounding text
+            const firstBrace = rawAnalysis.indexOf('{');
+            const lastBrace = rawAnalysis.lastIndexOf('}');
+            if (firstBrace !== -1 && lastBrace > firstBrace) {
+              cleanAnalysis = rawAnalysis.slice(firstBrace, lastBrace + 1);
+              aiDataObj = JSON.parse(cleanAnalysis);
+            } else {
+              throw new Error("No JSON object found in analysis response");
+            }
+          }
+          console.log("Analysis parsed OK, keys:", Object.keys(aiDataObj));
         } catch (e) {
-          console.error("Analysis JSON parse error:", e);
+          console.error("Analysis JSON parse error:", e, "\nRaw response:", analysisRes.text?.slice(0, 500));
         }
 
 
@@ -534,12 +549,20 @@ Generic loanword examples (do NOT tag — Rule 6 applies):
 
         for (const chunkRes of chunkTranscriptResults) {
           try {
-            const clean = (chunkRes.text || "{}").replace(/```json/gi, '').replace(/```/g, '').trim();
-            const parsed = JSON.parse(clean);
+            const raw = chunkRes.text || "{}";
+            let clean = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+            let parsed: any;
+            try {
+              parsed = JSON.parse(clean);
+            } catch {
+              const fb = raw.indexOf('{'), lb = raw.lastIndexOf('}');
+              if (fb !== -1 && lb > fb) parsed = JSON.parse(raw.slice(fb, lb + 1));
+              else throw new Error("No JSON in chunk response");
+            }
             if (parsed.detected_language && !detectedLanguage) detectedLanguage = parsed.detected_language;
             (parsed.speakers || []).forEach((s: string) => speakerSet.add(s));
             (parsed.transcript_by_turn || []).forEach((t: any) => allTurns.push(t));
-          } catch (e) {}
+          } catch (e) { console.error("Chunk transcript parse error:", e); }
         }
 
         // 3. Annotation step — enrich each turn with conversation labels
